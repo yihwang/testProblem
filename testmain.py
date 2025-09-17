@@ -1,9 +1,23 @@
-# main.py
+# testmain.py
 # 一个用于生成网络舆情简报的快速原型
 
+import logging
 import requests
-from fastapi import FastAPI
+import time
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("舆情简报服务")
 
 # 1. 初始化FastAPI应用
 app = FastAPI()
@@ -16,56 +30,108 @@ class BriefingRequest(BaseModel):
 # 3. 定义API端点
 @app.post("/generate_briefing")
 def generate_briefing(request: BriefingRequest):
-    # 打印日志，显示收到的请求
-    print(f"收到请求，主题: {request.topic}")
+    request_id = f"req_{int(time.time())}_{hash(request.topic) % 10000}"
+    logger.info(f"[{request_id}] 收到请求，主题: {request.topic}, 最大文章数: {request.max_articles}")
+    start_time = time.time()
 
-    # --- 步骤一：从外部API获取新闻文章 ---
-    NEWS_API_KEY = "YOUR_NEWS_API_KEY_HERE" 
-    NEWS_API_URL = "https://newsapi.org/v2/everything"
+    try:
+        # --- 步骤一：从外部API获取新闻文章 ---
+        NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "1c6bcc6ef29b4d819ae484c7cda9a4c5")
+        NEWS_API_URL = "https://newsapi.org/v2/everything"
+        
+        logger.debug(f"[{request_id}] 准备调用News API，URL: {NEWS_API_URL}")
+        
+        params = {
+            "q": request.topic,
+            "apiKey": NEWS_API_KEY, 
+            "pageSize": request.max_articles,
+            "language": "zh"
+        }
+        
+        try:
+            response = requests.get(NEWS_API_URL, params=params, timeout=10)
+            response.raise_for_status()  # 抛出HTTP错误
+            articles = response.json().get("articles", [])
+            logger.info(f"[{request_id}] 成功获取到 {len(articles)} 篇文章")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[{request_id}] 调用News API失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"获取新闻文章失败: {str(e)}")
+        except Exception as e:
+            logger.error(f"[{request_id}] 处理News API响应失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"处理新闻数据失败: {str(e)}")
     
-    params = {
-        "q": request.topic,
-        "apiKey": NEWS_API_KEY,
-        "pageSize": request.max_articles,
-        "language": "zh"
-    }
-    
-    # 直接调用API，没有错误处理
-    response = requests.get(NEWS_API_URL, params=params)
-    articles = response.json().get("articles", [])
-    
-    # --- 步骤二：准备用于摘要的文本 ---
-    full_text = ""
-    for article in articles:
-        # 简单地拼接内容，没有考虑内容为空的情况
-        content = article.get("content", "")
-        if content:
-            full_text += content + "\n\n"
+        # --- 步骤二：准备用于摘要的文本 ---
+        full_text = ""
+        for idx, article in enumerate(articles):
+            try:
+                content = article.get("content", "")
+                if content:
+                    full_text += content + "\n\n"
+                    logger.debug(f"[{request_id}] 成功处理文章 {idx+1}/{len(articles)}")
+            except Exception as e:
+                logger.warning(f"[{request_id}] 处理文章 {idx+1} 时出错: {str(e)}")
+                continue
 
-    if not full_text:
-        return {"error": "未能获取到相关文章内容"}
+        if not full_text:
+            logger.warning(f"[{request_id}] 未能获取到相关文章内容")
+            raise HTTPException(status_code=404, detail="未能获取到相关文章内容")
 
-    # --- 步骤三：调用大模型生成摘要 ---
-    from transformers import pipeline
+        logger.info(f"[{request_id}] 准备摘要的文本长度: {len(full_text)} 字符")
 
-    print("正在加载摘要模型...")
-    # 使用一个较小的模型作为示例，实际场景可能更大
-    summarizer = pipeline("summarization", model="csebuetnlp/mT5-small")
-    print("模型加载完毕。")
+        # --- 步骤三：调用大模型生成摘要 ---
+        try:
+            from transformers import pipeline, PipelineException
+            
+            logger.info(f"[{request_id}] 正在加载摘要模型...")
+            model_start_time = time.time()
+            
+            # 使用一个较小的模型作为示例，实际场景可能更大
+            try:
+                summarizer = pipeline("summarization", model="csebuetnlp/mT5-small")
+                model_load_time = time.time() - model_start_time
+                logger.info(f"[{request_id}] 模型加载完毕，耗时: {model_load_time:.2f} 秒")
+            except Exception as e:
+                logger.error(f"[{request_id}] 模型加载失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"模型加载失败: {str(e)}")
 
-    # 对拼接后的长文本进行摘要
-    summary = summarizer(full_text, max_length=200, min_length=50, do_sample=False)
-    
-    final_summary = summary[0]['summary_text']
-    
-    print("摘要生成完毕。")
+            # 对拼接后的长文本进行摘要
+            logger.info(f"[{request_id}] 开始生成摘要...")
+            summary_start_time = time.time()
+            
+            try:
+                summary = summarizer(full_text, max_length=200, min_length=50, do_sample=False)
+                final_summary = summary[0]['summary_text']
+                
+                summary_time = time.time() - summary_start_time
+                logger.info(f"[{request_id}] 摘要生成完毕，耗时: {summary_time:.2f} 秒，摘要长度: {len(final_summary)} 字符")
+            except PipelineException as e:
+                logger.error(f"[{request_id}] 摘要生成失败 (PipelineException): {str(e)}")
+                raise HTTPException(status_code=500, detail=f"摘要生成失败: {str(e)}")
+            except Exception as e:
+                logger.error(f"[{request_id}] 摘要生成失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"摘要生成失败: {str(e)}")
+        except ImportError as e:
+            logger.error(f"[{request_id}] 导入transformers库失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"导入依赖库失败: {str(e)}")
 
-    # --- 步骤四：返回结果 ---
-    return {
-        "topic": request.topic,
-        "article_count": len(articles),
-        "summary": final_summary
-    }
+        # --- 步骤四：返回结果 ---
+        total_time = time.time() - start_time
+        logger.info(f"[{request_id}] 请求处理完成，总耗时: {total_time:.2f} 秒")
+        
+        return {
+            "request_id": request_id,
+            "topic": request.topic,
+            "article_count": len(articles),
+            "summary": final_summary,
+            "processing_time": f"{total_time:.2f}秒"
+        }
+    except HTTPException as e:
+        # 已经记录了详细日志，这里不需要重复记录
+        raise
+    except Exception as e:
+        total_time = time.time() - start_time
+        logger.error(f"[{request_id}] 请求处理异常，总耗时: {total_time:.2f} 秒, 错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"处理请求时发生未知错误: {str(e)}")
 
 # 运行应用的命令 (用于本地调试):
 # uvicorn main:app --reload
