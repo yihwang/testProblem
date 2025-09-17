@@ -5,6 +5,7 @@ import logging
 import requests
 import time
 import os
+import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -36,7 +37,7 @@ def generate_briefing(request: BriefingRequest):
 
     try:
         # --- 步骤一：从外部API获取新闻文章 ---
-        NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "1c6bcc6ef29b4d819ae484c7cda9a4c5")
+        NEWS_API_KEY = "1c6bcc6ef29b4d819ae484c7cda9a4c5"
         NEWS_API_URL = "https://newsapi.org/v2/everything"
         
         logger.debug(f"[{request_id}] 准备调用News API，URL: {NEWS_API_URL}")
@@ -49,9 +50,11 @@ def generate_briefing(request: BriefingRequest):
         }
         
         try:
-            response = requests.get(NEWS_API_URL, params=params, timeout=10)
-            response.raise_for_status()  # 抛出HTTP错误
-            articles = response.json().get("articles", [])
+            # response = requests.get(NEWS_API_URL, params=params, timeout=10)
+            # response.raise_for_status()  # 抛出HTTP错误
+            # articles = response.json().get("articles", [])
+            with open("mock/mock_newsapi.json", "r", encoding="utf-8") as f:
+                articles = json.load(f).get("articles", [])
             logger.info(f"[{request_id}] 成功获取到 {len(articles)} 篇文章")
         except requests.exceptions.RequestException as e:
             logger.error(f"[{request_id}] 调用News API失败: {str(e)}")
@@ -80,14 +83,15 @@ def generate_briefing(request: BriefingRequest):
 
         # --- 步骤三：调用大模型生成摘要 ---
         try:
-            from transformers import pipeline, PipelineException
+            from transformers import pipeline
             
             logger.info(f"[{request_id}] 正在加载摘要模型...")
             model_start_time = time.time()
             
             # 使用一个较小的模型作为示例，实际场景可能更大
             try:
-                summarizer = pipeline("summarization", model="csebuetnlp/mT5-small")
+                local_model_path = "/app/mt5-small"
+                summarizer = pipeline("summarization", model=local_model_path, tokenizer=local_model_path, use_fast=False)
                 model_load_time = time.time() - model_start_time
                 logger.info(f"[{request_id}] 模型加载完毕，耗时: {model_load_time:.2f} 秒")
             except Exception as e:
@@ -104,9 +108,6 @@ def generate_briefing(request: BriefingRequest):
                 
                 summary_time = time.time() - summary_start_time
                 logger.info(f"[{request_id}] 摘要生成完毕，耗时: {summary_time:.2f} 秒，摘要长度: {len(final_summary)} 字符")
-            except PipelineException as e:
-                logger.error(f"[{request_id}] 摘要生成失败 (PipelineException): {str(e)}")
-                raise HTTPException(status_code=500, detail=f"摘要生成失败: {str(e)}")
             except Exception as e:
                 logger.error(f"[{request_id}] 摘要生成失败: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"摘要生成失败: {str(e)}")
