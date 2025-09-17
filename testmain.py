@@ -67,7 +67,7 @@ def generate_briefing(request: BriefingRequest):
         full_text = ""
         for idx, article in enumerate(articles):
             try:
-                content = article.get("content", "")
+                content = article.get("description", "") # 从description获取文章摘要
                 if content:
                     full_text += content + "\n\n"
                     logger.debug(f"[{request_id}] 成功处理文章 {idx+1}/{len(articles)}")
