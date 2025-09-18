@@ -33,7 +33,7 @@ def setup_logger() -> logging.Logger:
 logger = setup_logger()
 
 # API配置
-NEWS_API_KEY: str = "1c6bcc6ef29b4d819ae484c7cda9a4c5"
+NEWS_API_KEY: str = "xxx"
 NEWS_API_URL: str = "https://newsapi.org/v2/everything"
 
 # 模型配置
@@ -50,6 +50,6 @@ DEFAULT_MAX_ARTICLES: int = 5
 FETCH_FULL_TEXT: bool = False
 
 # OpenAI接口模型配置
-OPENAI_API_KEY: Optional[str] = "sk-MLKICx5mfXT3eJlVB89fFb87A3Ed4c25A8DcBaEaC128Ea84"
+OPENAI_API_KEY: Optional[str] = "xxx"
 OPENAI_BASE_URL: Optional[str] = "https://api.vveai.com/v1"
 DEFAULT_OPENAI_MODEL: str = "qwen3-32b"
