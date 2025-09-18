@@ -67,7 +67,7 @@ class StructuredBriefingGenerator:
         """获取新闻文章的内部方法"""
         try:
             # return self.news_service.get_articles(topic, max_articles, request_id)
-            return self.news_service.get_articles_from_mock("mock/mock_newsapi.json", request_id)
+            return self.news_service.get_articles_from_mock("/app/testProblem/mock/mock_newsapi.json", request_id)
         except Exception as e:
             logger.error(f"[{request_id}] 获取新闻文章失败: {str(e)}")
             raise
