@@ -46,6 +46,9 @@ SUMMARY_MIN_LENGTH: int = 50
 # 默认值
 DEFAULT_MAX_ARTICLES: int = 5
 
+# 是否需要根据URL获取新闻全文
+FETCH_FULL_TEXT: bool = False
+
 # OpenAI接口模型配置
 OPENAI_API_KEY: Optional[str] = "sk-MLKICx5mfXT3eJlVB89fFb87A3Ed4c25A8DcBaEaC128Ea84"
 OPENAI_BASE_URL: Optional[str] = "https://api.vveai.com/v1"

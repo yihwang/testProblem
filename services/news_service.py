@@ -2,7 +2,7 @@
 
 import requests
 from typing import List, Optional
-from core.config import NEWS_API_KEY, NEWS_API_URL, logger
+from core.config import NEWS_API_KEY, NEWS_API_URL, logger, FETCH_FULL_TEXT
 from core.models import ArticleModel
 
 class NewsService:
@@ -51,6 +51,9 @@ class NewsService:
                     url=article_data.get("url"),
                     source=article_data.get("source", {}).get("name")
                 )
+                # 根据配置决定是否调用fetch_full_text获取完整网页内容
+                if FETCH_FULL_TEXT:
+                    article.fetch_full_text(request_id)
                 articles.append(article)
             
             logger.info(f"[{request_id}] 成功获取到 {len(articles)} 篇文章")
@@ -91,6 +94,9 @@ class NewsService:
                         url=article_data.get("url"),
                         source=article_data.get("source", {}).get("name")
                     )
+                    # 根据配置决定是否调用fetch_full_text获取完整网页内容
+                    if FETCH_FULL_TEXT:
+                        article.fetch_full_text(request_id)
                     articles.append(article)
                 
                 logger.info(f"[{request_id}] 从mock文件成功获取到 {len(articles)} 篇文章")
